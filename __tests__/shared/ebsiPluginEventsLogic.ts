@@ -1,7 +1,7 @@
 import { TAgent, IMessageHandler, IDIDManager, ICredentialPlugin } from '@veramo/core'
-import { IMyAgentPlugin } from '../../src/types/IMyAgentPlugin'
+import { IEbsiPlugin } from '../../src/types/IEbsiPlugin'
 
-type ConfiguredAgent = TAgent<IMyAgentPlugin & IMessageHandler & IDIDManager & ICredentialPlugin>
+type ConfiguredAgent = TAgent<IEbsiPlugin & IMessageHandler & IDIDManager & ICredentialPlugin>
 
 export default (testContext: {
   getAgent: () => ConfiguredAgent

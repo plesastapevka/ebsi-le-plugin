@@ -12,13 +12,13 @@ import { Server } from 'http'
 import { AgentRouter, RequestWithAgentRouter } from '@veramo/remote-server'
 import { getConfig } from '@veramo/cli/build/setup'
 import { createObjects } from '@veramo/cli/build/lib/objectCreator'
-import { IMyAgentPlugin } from '../src/types/IMyAgentPlugin'
+import { IEbsiPlugin } from '../src/types/IEbsiPlugin'
 import fs from 'fs'
 
 jest.setTimeout(30000)
 
 // Shared tests
-import myPluginLogic from './shared/myPluginLogic'
+import myPluginLogic from './shared/ebsiPluginLogic'
 
 const databaseFile = 'rest-database.sqlite'
 const port = 3002
@@ -29,7 +29,7 @@ let restServer: Server
 let dbConnection: DataSource
 
 const getAgent = (options?: IAgentOptions) =>
-  createAgent<IMyAgentPlugin & IMessageHandler>({
+  createAgent<IEbsiPlugin & IMessageHandler>({
     ...options,
     plugins: [
       new AgentRestClient({

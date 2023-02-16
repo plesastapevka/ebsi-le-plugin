@@ -1,7 +1,7 @@
 import { TAgent, IMessageHandler } from '@veramo/core'
-import { IMyAgentPlugin } from '../../src/types/IMyAgentPlugin'
+import { IEbsiPlugin } from '../../src/types/IEbsiPlugin'
 
-type ConfiguredAgent = TAgent<IMyAgentPlugin & IMessageHandler>
+type ConfiguredAgent = TAgent<IEbsiPlugin & IMessageHandler>
 
 export default (testContext: {
   getAgent: () => ConfiguredAgent
@@ -17,11 +17,9 @@ export default (testContext: {
     })
     afterAll(testContext.tearDown)
 
-    it('should foo', async () => {
-      const result = await agent.myPluginFoo({
-        did: 'did:ethr:goerli:0xb09b66026ba5909a7cfe99b76875431d2b8d5190',
-        foo: 'lorem',
-        bar: 'ipsum',
+    it('should return created identifier', async () => {
+      const result = await agent.createIdentifierV1({
+        options: { version: "1" }
       })
       expect(result).toEqual({ foobar: 'ipsum' })
     })
