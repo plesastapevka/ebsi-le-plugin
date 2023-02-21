@@ -59,7 +59,6 @@ export class EbsiPlugin implements IAgentPlugin {
     args: ICreateIdentifierV1Args,
     context: IRequiredContext
   ): Promise<Omit<IIdentifier, 'provider'>> {
-    // Generating a key pair with jose to get a private key for later use
     const keys = await jose.generateKeyPair('ES256K')
     const privateKeyJwk = await jose.exportJWK(keys.privateKey)
     if (!privateKeyJwk.d) {
@@ -84,24 +83,21 @@ export class EbsiPlugin implements IAgentPlugin {
     const pubPoint = ec.keyFromPublic(bytes).getPublic()
     const publicKeyJwk = {
       kty: 'EC',
-      use: "sig",
-      crv: 'Secp256k1',
       x: bytesToBase64url(pubPoint.getX().toBuffer('be', 32)),
       y: bytesToBase64url(pubPoint.getY().toBuffer('be', 32)),
+      crv: 'secp256k1',
+      use: 'sig',
       alg: 'ES256K',
     }
 
     const jwkThumbprint = await jose.calculateJwkThumbprint(
-      { kty: 'EC', crv: 'Secp256k1', x: publicKeyJwk.x, y: publicKeyJwk.y },
+      { kty: 'EC', crv: 'secp256k1', x: publicKeyJwk.x, y: publicKeyJwk.y },
       'sha256'
     )
     const subjectIdentifier = Buffer.from(
       base58btc.encode(Buffer.concat([new Uint8Array([1]), randomBytes(16)]))
     ).toString()
-    // const subIdentifierBuffer = Buffer.concat([Buffer.from('01'), randomBytes(16)])
-    console.log(subjectIdentifier)
-    // const base58 = base58btc.encode(subIdentifierBuffer)
-    // console.log(subIden.toString())
+
     const kid = `did:ebsi:${subjectIdentifier}#${jwkThumbprint}`
     const did = `did:ebsi:${subjectIdentifier}`
 
@@ -112,7 +108,6 @@ export class EbsiPlugin implements IAgentPlugin {
       services: [],
     }
     identifier.keys[0].privateKeyHex = privateKeyHex
-    console.log('identifier', identifier)
 
     const didDocument = {
       '@context': 'https://w3id.org/did/v1',
@@ -129,18 +124,22 @@ export class EbsiPlugin implements IAgentPlugin {
       assertionMethod: [kid],
     }
 
-    console.log(didDocument)
-    console.log(didDocument.verificationMethod[0].publicKeyJwk)
     const bearer =
-      'eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJKV1QiLCJraWQiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSNrZXlzLTEifQ.eyJvbmJvYXJkaW5nIjoicmVjYXB0Y2hhIiwidmFsaWRhdGVkSW5mbyI6eyJzdWNjZXNzIjp0cnVlLCJjaGFsbGVuZ2VfdHMiOiIyMDIzLTAyLTA3VDE0OjE3OjUyWiIsImhvc3RuYW1lIjoiYXBwLXBpbG90LmVic2kuZXUiLCJzY29yZSI6MC4zLCJhY3Rpb24iOiJsb2dpbiJ9LCJpc3MiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSIsImlhdCI6MTY3NTc4MTQwMywiZXhwIjoxNjc1NzgyMzAzfQ.vna7SEsdCkGrxzrQAkCWNRVWn7JMce3tOVu3t-CYmkuw83GJ51atfTg1YnV1YvUpbliQ3A22DQdo-oVMxCeNNw'
-    const verifiableAuthorization = await this.requestVerifiableAuthorization({ bearer: bearer })
+      'eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJKV1QiLCJraWQiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSNrZXlzLTEifQ.eyJvbmJvYXJkaW5nIjoicmVjYXB0Y2hhIiwidmFsaWRhdGVkSW5mbyI6eyJzdWNjZXNzIjp0cnVlLCJjaGFsbGVuZ2VfdHMiOiIyMDIzLTAyLTIxVDAyOjA1OjA2WiIsImhvc3RuYW1lIjoiYXBwLXBpbG90LmVic2kuZXUiLCJzY29yZSI6MC45LCJhY3Rpb24iOiJsb2dpbiJ9LCJpc3MiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSIsImlhdCI6MTY3Njk0NTMyNiwiZXhwIjoxNjc2OTQ2MjI2fQ.YZrq7vushN8yU49kCiWl7igYUZSbeZJlGFeiL4j9U1NVX_oYeMStPLBBdk9hi62Dcw0Nasxvh2IOeWmrLg_J1g'
+    const verifiableAuthorization = await this.requestVerifiableAuthorization({
+      kid,
+      publicKeyJwk,
+      privateKeyJwk,
+      bearer,
+    })
+
     const verifiablePresentation = await this.createVerifiablePresentation({
       verifiableAuthorization,
       privateKeyJwk,
       publicKeyJwk,
       identifier,
     })
-    console.log(verifiablePresentation)
+
     const accessToken = await this.exchangeVerifiableAuthorization({
       verifiablePresentation,
       privateKeyJwk,
@@ -157,7 +156,23 @@ export class EbsiPlugin implements IAgentPlugin {
   private async requestVerifiableAuthorization(
     args: IRequestVerifiableAuthorizationArgs
   ): Promise<IVerifiableAuthorization> {
-    // const request = new URLSearchParams((await authenticationRequest.json())['session_token'])
+    const subject = args.kid.split('#')[1]
+    const idToken = {
+      sub: subject,
+      sub_jwk: args.publicKeyJwk,
+      nonce: uuidv4(),
+      responseMode: 'form_post',
+    }
+
+    const privateKey = await jose.importJWK(args.privateKeyJwk, 'ES256K')
+    const idTokenJwt = await new jose.SignJWT(idToken)
+      .setProtectedHeader({ alg: 'ES256K', typ: 'JWT', kid: args.kid })
+      .setIssuedAt()
+      .setAudience('https://api-pilot.ebsi.eu/users-onboarding/v2/authentication-responses')
+      .setIssuer('https://self-issued.me/v2')
+      .setExpirationTime('1h')
+      .sign(privateKey)
+
     const authenticationResponse = await fetch(
       'https://api-pilot.ebsi.eu/users-onboarding/v2/authentication-responses',
       {
@@ -167,15 +182,17 @@ export class EbsiPlugin implements IAgentPlugin {
           Authorization: `Bearer ${args.bearer}`,
         },
         body: JSON.stringify({
-          id_token: args.bearer,
+          id_token: idTokenJwt,
         }),
       }
     )
-    // return await authenticationResponse.json();
-    return {
-      verifiableCredential:
-        'eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJKV1QiLCJraWQiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSNrZXlzLTEifQ.eyJqdGkiOiJ2YzplYnNpOmF1dGhlbnRpY2F0aW9uIzU3OWFlYTRhLTdmMGYtNDFkMS1iYTBjLTE0NzAxMTZiYTE3MSIsInN1YiI6ImRpZDplYnNpOnpyMnJXREhIclVDZFpBVzd3c1NiNW5RIiwiaXNzIjoiZGlkOmVic2k6enIycldESEhyVUNkWkFXN3dzU2I1blEiLCJuYmYiOjE2NzU3Nzk2MjIsImV4cCI6MTY5MTUwNDQyMiwiaWF0IjoxNjc1Nzc5NjIyLCJ2YyI6eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvMjAxOC9jcmVkZW50aWFscy92MSJdLCJpZCI6InZjOmVic2k6YXV0aGVudGljYXRpb24jNTc5YWVhNGEtN2YwZi00MWQxLWJhMGMtMTQ3MDExNmJhMTcxIiwidHlwZSI6WyJWZXJpZmlhYmxlQ3JlZGVudGlhbCIsIlZlcmlmaWFibGVBdXRob3Jpc2F0aW9uIl0sImlzc3VlciI6ImRpZDplYnNpOnpyMnJXREhIclVDZFpBVzd3c1NiNW5RIiwiaXNzdWFuY2VEYXRlIjoiMjAyMy0wMi0wN1QxNDoyMDoyMloiLCJpc3N1ZWQiOiIyMDIzLTAyLTA3VDE0OjIwOjIyWiIsInZhbGlkRnJvbSI6IjIwMjMtMDItMDdUMTQ6MjA6MjJaIiwiZXhwaXJhdGlvbkRhdGUiOiIyMDIzLTA4LTA4VDE0OjIwOjIyWiIsImNyZWRlbnRpYWxTdWJqZWN0Ijp7ImlkIjoiZGlkOmVic2k6enIycldESEhyVUNkWkFXN3dzU2I1blEifSwiY3JlZGVudGlhbFNjaGVtYSI6eyJpZCI6Imh0dHBzOi8vYXBpLXBpbG90LmVic2kuZXUvdHJ1c3RlZC1zY2hlbWFzLXJlZ2lzdHJ5L3YyL3NjaGVtYXMvejNNZ1VGVWtiNzIydXE0eDNkdjV5QUptbk5tekRGZUs1VUM4eDgzUW9lTEpNIiwidHlwZSI6IkZ1bGxKc29uU2NoZW1hVmFsaWRhdG9yMjAyMSJ9fX0.zt6ftDhJnf8APYt9BMz0cTwDHAob6a2AbBOFOVXXOK9vgTeOx8W81VoHZDVVM3Xz6FkZfsh-uiO89hEbRugsOg',
+
+    const va = await authenticationResponse.json()
+    if (authenticationResponse.status > 299 || authenticationResponse.status < 200) {
+      throw new Error(`${JSON.stringify(va, null, 2)}`)
     }
+
+    return va
   }
 
   private async createVerifiablePresentation(
@@ -183,8 +200,12 @@ export class EbsiPlugin implements IAgentPlugin {
   ): Promise<IVerifiablePresentation> {
     const verifiableAuthorization = args.verifiableAuthorization.verifiableCredential
     if (args.identifier.controllerKeyId === undefined) {
-      throw new Error()
+      throw new Error('Controller Key ID undefined')
     }
+    if (args.verifiableAuthorization.verifiableCredential === undefined) {
+      throw new Error('Verifiable Authorization undefined')
+    }
+
     const issuer: EbsiIssuer = {
       did: args.identifier.did,
       kid: args.identifier.controllerKeyId,
@@ -200,7 +221,6 @@ export class EbsiPlugin implements IAgentPlugin {
       holder: args.identifier.did,
       verifiableCredential: [verifiableAuthorization as string],
     } as EbsiVerifiablePresentation
-    
     const jwtVp = await createVerifiablePresentationJwt(
       payload,
       issuer,
@@ -215,36 +235,16 @@ export class EbsiPlugin implements IAgentPlugin {
     return { jwtVp, payload }
   }
 
-  // TODO: initiate a SIOP request
-  // post to https://api-pilot.ebsi.eu/authorisation/v2/authentication-requests
-  // with body: { "scope": openid did_authn}
-  // save response to "res"
   private async exchangeVerifiableAuthorization(args: IExchangeVerifiableAuthorizationArgs): Promise<IAccessToken> {
-    const siopUri = await fetch('https://api-pilot.ebsi.eu/authorisation/v2/authentication-requests', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        scope: 'openid did_authn',
-      }),
-    })
-    const siopRequestParams = new URLSearchParams(await siopUri.text())
-    const siopRequestJwt = siopRequestParams.get('request')
-    if (!siopRequestJwt) {
-      throw new Error('No SIOP request found')
-    }
-
     const agent = new Agent({
       privateKey: await jose.importJWK(args.privateKeyJwk, 'ES256K'),
       alg: 'ES256K',
-      kid: args.identifier.keys[0].kid,
+      kid: args.identifier.controllerKeyId,
       siopV2: true,
     })
-
-    const idToken = agent.createResponse({
+    const response = await agent.createResponse({
       nonce: uuidv4(),
-      redirectUri: 'https://test.com',
+      redirectUri: 'https://example.com',
       claims: {
         encryption_key: args.publicKeyJwk,
       },
@@ -270,16 +270,24 @@ export class EbsiPlugin implements IAgentPlugin {
     })
 
     const body = {
-      id_token: idToken,
-      vp_token: args.verifiablePresentation,
+      id_token: response.idToken as string,
+      vp_token: args.verifiablePresentation.jwtVp as string,
+    }
+    const callback = 'https://api-pilot.ebsi.eu/authorisation/v2/siop-sessions'
+    const sessionResponse = await fetch(callback, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(body),
+    })
+    const session = await sessionResponse.json()
+
+    if (sessionResponse.status > 299 || sessionResponse.status < 200) {
+      throw new Error(`${JSON.stringify(session, null, 2)}`)
     }
 
-    const siopSessionRequestBody = {
-      id_token: idToken,
-      vp_token: '',
-    }
-
-    return { accessToken: 'requestJwt' }
+    return session
   }
 
   /** {@inheritDoc IMyAgentPlugin.myPluginFoo} */

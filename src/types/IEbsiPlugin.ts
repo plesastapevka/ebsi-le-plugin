@@ -62,6 +62,18 @@ export interface IRequestVerifiableAuthorizationArgs {
    * Bearer token needed for authorization
    */
   bearer: string
+  /**
+   * signer's kid; e.g. did:ebsi:zbM8cCuoBMFNLeQyLiVFyxw#keys-1
+   */
+  kid: string
+  /**
+   * Public key used to sign the JWT in JWK format
+   */
+  publicKeyJwk: JWK
+  /**
+   * Private key to sign the JWT in JWK format
+   */
+  privateKeyJwk: JWK
 }
 
 export interface IExchangeVerifiableAuthorizationArgs {
@@ -117,7 +129,19 @@ export interface IAccessToken {
   /**
    * Access token returned by exchange of Verifiable Authorization
    */
-  accessToken: string
+  ake1_enc_payload: string
+  ake1_sig_payload: ISIOPSessionPayload
+  ake1_jws_detached: string,
+  kid: string
+}
+
+export interface ISIOPSessionPayload {
+  iat: number,
+  exp: number,
+  ake1_nonce: string
+  ake1_enc_payload: string
+  did: string
+  iss: string
 }
 
 export interface IVerifiableAuthorization {
