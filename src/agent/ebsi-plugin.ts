@@ -9,6 +9,8 @@ import {
   IExchangeVerifiableAuthorizationArgs,
   ICreateVerifiablePresentationArgs,
   IVerifiablePresentation,
+  IInsertDidDocumentArgs,
+  IRPCResult,
 } from '../types/IEbsiPlugin'
 import { IIdentifier } from '@veramo/core'
 import { base58btc } from 'multiformats/bases/base58'
@@ -39,8 +41,9 @@ export class EbsiPlugin implements IAgentPlugin {
   readonly methods: IEbsiPlugin = {
     createIdentifierV1: this.createIdentifierV1.bind(this),
     requestVerifiableAuthorization: this.requestVerifiableAuthorization.bind(this),
-    exchangeVerifiableAuthorization: this.exchangeVerifiableAuthorization.bind(this),
     createVerifiablePresentation: this.createVerifiablePresentation.bind(this),
+    exchangeVerifiableAuthorization: this.exchangeVerifiableAuthorization.bind(this),
+    insertDidDocument: this.insertDidDocument.bind(this),
   }
 
   // list the event types that this plugin cares about.
@@ -146,6 +149,8 @@ export class EbsiPlugin implements IAgentPlugin {
       publicKeyJwk,
       identifier,
     })
+
+    const result = await this.insertDidDocument({})
 
     if (identifier.keys[0].privateKeyHex) {
       delete identifier.keys[0].privateKeyHex
@@ -288,6 +293,10 @@ export class EbsiPlugin implements IAgentPlugin {
     }
 
     return session
+  }
+
+  private async insertDidDocument(args: IInsertDidDocumentArgs): Promise<IRPCResult> {
+    return { jsonrpc: "2.0", id: 0, result: "not implemented" }
   }
 
   /** {@inheritDoc IMyAgentPlugin.myPluginFoo} */

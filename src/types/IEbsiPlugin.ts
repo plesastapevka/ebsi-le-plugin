@@ -1,6 +1,6 @@
-import { EbsiVerifiablePresentation } from '@cef-ebsi/verifiable-presentation';
+import { EbsiVerifiablePresentation } from '@cef-ebsi/verifiable-presentation'
 import { IPluginMethodMap, IAgentContext, IDIDManager, IResolver, IIdentifier, IKeyManager } from '@veramo/core'
-import { JWK, KeyLike } from 'jose';
+import { JWK, KeyLike } from 'jose'
 
 /**
  * My Agent Plugin description.
@@ -31,10 +31,23 @@ export interface IEbsiPlugin extends IPluginMethodMap {
    *   Declaring a context type here lets other developers know which other plugins
    *   need to also be installed for this method to work.
    */
-  private createIdentifierV1(args: ICreateIdentifierV1Args, context: IRequiredContext): Promise<Omit<IIdentifier, "provider">>;
-  private requestVerifiableAuthorization(args: IRequestVerifiableAuthorizationArgs): Promise<IVerifiableAuthorization>;
-  private exchangeVerifiableAuthorization(args: IExchangeVerifiableAuthorizationArgs): Promise<IAccessToken>;
-
+  private createIdentifierV1(
+    args: ICreateIdentifierV1Args,
+    context: IRequiredContext
+  ): Promise<Omit<IIdentifier, 'provider'>>
+  private requestVerifiableAuthorization(
+    args: IRequestVerifiableAuthorizationArgs,
+    context: IRequiredContext
+  ): Promise<IVerifiableAuthorization>
+  private createVerifiablePresentation(
+    args: ICreateVerifiablePresentationArgscontext,
+    context: IRequiredContext
+  ): Promise<IVerifiablePresentation>
+  private exchangeVerifiableAuthorization(
+    args: IExchangeVerifiableAuthorizationArgscontext,
+    context: IRequiredContext
+  ): Promise<IAccessToken>
+  private insertDidDocument(args: IInsertDidDocumentArgscontext, context: IRequiredContext): Promise<IRPCResult>
 }
 
 /**
@@ -49,7 +62,6 @@ export interface ICreateIdentifierV1Args {
    * Key Management System
    */
   kms?: string
-
 
   /**
    * Additional options
@@ -76,23 +88,11 @@ export interface IRequestVerifiableAuthorizationArgs {
   privateKeyJwk: JWK
 }
 
-export interface IExchangeVerifiableAuthorizationArgs {
+export interface IVerifiableAuthorization {
   /**
    * JWT encoded Verifiable Authorization
    */
-  verifiablePresentation: any
-  /**
-   * Identifier to be used for setting up the SiopAgent
-   */
-  identifier: Omit<IIdentifier, "provider">
-  /**
-   * Private key in JWK format
-   */
-  privateKeyJwk: JWK
-  /**
-   * Public key in JWK format
-   */
-  publicKeyJwk: JWK
+  verifiableCredential: string
 }
 
 export interface ICreateVerifiablePresentationArgs {
@@ -103,7 +103,7 @@ export interface ICreateVerifiablePresentationArgs {
   /**
    * Identifier to be used for setting up the EbsiIssuer
    */
-  identifier: Omit<IIdentifier, "provider">
+  identifier: Omit<IIdentifier, 'provider'>
   /**
    * Private key in JWK format
    */
@@ -125,30 +125,86 @@ export interface IVerifiablePresentation {
   payload: EbsiVerifiablePresentation
 }
 
+export interface IExchangeVerifiableAuthorizationArgs {
+  /**
+   * JWT encoded Verifiable Authorization
+   */
+  verifiablePresentation: any
+  /**
+   * Identifier to be used for setting up the SiopAgent
+   */
+  identifier: Omit<IIdentifier, 'provider'>
+  /**
+   * Private key in JWK format
+   */
+  privateKeyJwk: JWK
+  /**
+   * Public key in JWK format
+   */
+  publicKeyJwk: JWK
+}
+
 export interface IAccessToken {
   /**
-   * Access token returned by exchange of Verifiable Authorization
+   * Encrypted payload with user's public key
    */
   ake1_enc_payload: string
+  /**
+   * Encrypted payload with user's public key
+   */
   ake1_sig_payload: ISIOPSessionPayload
-  ake1_jws_detached: string,
+  /**
+   * Detached JWS of AKE1 Signing Payload
+   */
+  ake1_jws_detached: string
+  /**
+   * API KID
+   */
   kid: string
 }
 
 export interface ISIOPSessionPayload {
-  iat: number,
-  exp: number,
+  /**
+   * Issued at
+   */
+  iat: number
+  /**
+   * Expires at
+   */
+  exp: number
+  /**
+   * Nonce used during the authentication process
+   */
   ake1_nonce: string
+  /**
+   * Encrypted payload with user's public key
+   */
   ake1_enc_payload: string
+  /**
+   * API DID
+   */
   did: string
+  /**
+   * Issuer
+   */
   iss: string
 }
 
-export interface IVerifiableAuthorization {
+export interface IInsertDidDocumentArgs {}
+
+export interface IRPCResult {
   /**
-   * JWT encoded Verifiable Authorization
+   * Must be exactly "2.0"
    */
-  verifiableCredential: string
+  jsonrpc: string
+  /**
+   * Same identifier established by the client in the call
+   */
+  id: integer
+  /**
+   * Result of the call
+   */
+  result: string | object
 }
 
 /**
