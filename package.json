@@ -45,6 +45,7 @@
     "@veramo/did-manager": "^4.0.0",
     "@veramo/key-manager": "^4.0.0",
     "elliptic": "^6.5.4",
+    "ethers": "^6.0.5",
     "jose": "^4.11.4",
     "multicodec": "^3.2.1",
     "secp256k1": "^5.0.0",

@@ -71,21 +71,13 @@ export interface ICreateIdentifierV1Args {
 
 export interface IRequestVerifiableAuthorizationArgs {
   /**
+   * JWT encoded id token
+   */
+  idTokenJwt: string
+  /**
    * Bearer token needed for authorization
    */
   bearer: string
-  /**
-   * signer's kid; e.g. did:ebsi:zbM8cCuoBMFNLeQyLiVFyxw#keys-1
-   */
-  kid: string
-  /**
-   * Public key used to sign the JWT in JWK format
-   */
-  publicKeyJwk: JWK
-  /**
-   * Private key to sign the JWT in JWK format
-   */
-  privateKeyJwk: JWK
 }
 
 export interface IVerifiableAuthorization {
@@ -190,7 +182,21 @@ export interface ISIOPSessionPayload {
   iss: string
 }
 
-export interface IInsertDidDocumentArgs {}
+export interface IInsertDidDocumentArgs {
+  /**
+   * Bearer token needed for authorization
+   */
+  bearer: string
+  /**
+   * Identifier needed to generate a DID Document which will be
+   * inserted into the EBSI DID registry
+   */
+  identifier: Omit<IIdentifier, 'provider'>
+  /**
+   * Public key in JWK format used to sign the DID Document
+   */
+  publicKeyJwk: JWK
+}
 
 export interface IRPCResult {
   /**

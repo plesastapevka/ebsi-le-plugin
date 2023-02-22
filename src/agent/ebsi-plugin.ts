@@ -32,6 +32,9 @@ import {
   EbsiVerifiablePresentation,
 } from '@cef-ebsi/verifiable-presentation'
 
+import { sha256 } from 'ethers'
+import crypto from 'crypto'
+
 /**
  * {@inheritDoc IEbsiPlugin}
  * @beta
@@ -112,27 +115,28 @@ export class EbsiPlugin implements IAgentPlugin {
     }
     identifier.keys[0].privateKeyHex = privateKeyHex
 
-    const didDocument = {
-      '@context': 'https://w3id.org/did/v1',
-      id: did,
-      verificationMethod: [
-        {
-          id: kid,
-          type: 'JsonWebKey2020',
-          controller: did,
-          publicKeyJwk,
-        },
-      ],
-      authentication: [kid],
-      assertionMethod: [kid],
+    const bearer =
+      'eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJKV1QiLCJraWQiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSNrZXlzLTEifQ.eyJvbmJvYXJkaW5nIjoicmVjYXB0Y2hhIiwidmFsaWRhdGVkSW5mbyI6eyJzdWNjZXNzIjp0cnVlLCJjaGFsbGVuZ2VfdHMiOiIyMDIzLTAyLTIxVDEyOjU3OjE3WiIsImhvc3RuYW1lIjoiYXBwLXBpbG90LmVic2kuZXUiLCJzY29yZSI6MC45LCJhY3Rpb24iOiJsb2dpbiJ9LCJpc3MiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSIsImlhdCI6MTY3Njk4NjUyNCwiZXhwIjoxNjc2OTg3NDI0fQ.L37cPMCSbY635K13hzrBNe_-Rrn9QC682CzKczVrBpL7K0ySYscAc_9DRfSW43Rl6WZaQqE1kp-sG3CPFwfdhg'
+
+    const subject = kid.split('#')[1]
+    const idToken = {
+      sub: subject,
+      sub_jwk: publicKeyJwk,
+      nonce: uuidv4(),
+      responseMode: 'form_post',
     }
 
-    const bearer =
-      'eyJhbGciOiJFUzI1NksiLCJ0eXAiOiJKV1QiLCJraWQiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSNrZXlzLTEifQ.eyJvbmJvYXJkaW5nIjoicmVjYXB0Y2hhIiwidmFsaWRhdGVkSW5mbyI6eyJzdWNjZXNzIjp0cnVlLCJjaGFsbGVuZ2VfdHMiOiIyMDIzLTAyLTIxVDAyOjA1OjA2WiIsImhvc3RuYW1lIjoiYXBwLXBpbG90LmVic2kuZXUiLCJzY29yZSI6MC45LCJhY3Rpb24iOiJsb2dpbiJ9LCJpc3MiOiJkaWQ6ZWJzaTp6cjJyV0RISHJVQ2RaQVc3d3NTYjVuUSIsImlhdCI6MTY3Njk0NTMyNiwiZXhwIjoxNjc2OTQ2MjI2fQ.YZrq7vushN8yU49kCiWl7igYUZSbeZJlGFeiL4j9U1NVX_oYeMStPLBBdk9hi62Dcw0Nasxvh2IOeWmrLg_J1g'
+    const privateKey = await jose.importJWK(privateKeyJwk, 'ES256K')
+    const idTokenJwt = await new jose.SignJWT(idToken)
+      .setProtectedHeader({ alg: 'ES256K', typ: 'JWT', kid })
+      .setIssuedAt()
+      .setAudience('https://api-pilot.ebsi.eu/users-onboarding/v2/authentication-responses')
+      .setIssuer('https://self-issued.me/v2')
+      .setExpirationTime('1h')
+      .sign(privateKey)
+
     const verifiableAuthorization = await this.requestVerifiableAuthorization({
-      kid,
-      publicKeyJwk,
-      privateKeyJwk,
+      idTokenJwt,
       bearer,
     })
 
@@ -149,8 +153,8 @@ export class EbsiPlugin implements IAgentPlugin {
       publicKeyJwk,
       identifier,
     })
-
-    const result = await this.insertDidDocument({})
+    console.log(JSON.stringify(accessToken, null, 2))
+    const receipt = await this.insertDidDocument({ identifier, bearer: idTokenJwt, publicKeyJwk })
 
     if (identifier.keys[0].privateKeyHex) {
       delete identifier.keys[0].privateKeyHex
@@ -161,23 +165,6 @@ export class EbsiPlugin implements IAgentPlugin {
   private async requestVerifiableAuthorization(
     args: IRequestVerifiableAuthorizationArgs
   ): Promise<IVerifiableAuthorization> {
-    const subject = args.kid.split('#')[1]
-    const idToken = {
-      sub: subject,
-      sub_jwk: args.publicKeyJwk,
-      nonce: uuidv4(),
-      responseMode: 'form_post',
-    }
-
-    const privateKey = await jose.importJWK(args.privateKeyJwk, 'ES256K')
-    const idTokenJwt = await new jose.SignJWT(idToken)
-      .setProtectedHeader({ alg: 'ES256K', typ: 'JWT', kid: args.kid })
-      .setIssuedAt()
-      .setAudience('https://api-pilot.ebsi.eu/users-onboarding/v2/authentication-responses')
-      .setIssuer('https://self-issued.me/v2')
-      .setExpirationTime('1h')
-      .sign(privateKey)
-
     const authenticationResponse = await fetch(
       'https://api-pilot.ebsi.eu/users-onboarding/v2/authentication-responses',
       {
@@ -187,7 +174,7 @@ export class EbsiPlugin implements IAgentPlugin {
           Authorization: `Bearer ${args.bearer}`,
         },
         body: JSON.stringify({
-          id_token: idTokenJwt,
+          id_token: args.idTokenJwt,
         }),
       }
     )
@@ -203,6 +190,7 @@ export class EbsiPlugin implements IAgentPlugin {
   private async createVerifiablePresentation(
     args: ICreateVerifiablePresentationArgs
   ): Promise<IVerifiablePresentation> {
+    console.log(args.verifiableAuthorization.verifiableCredential)
     const verifiableAuthorization = args.verifiableAuthorization.verifiableCredential
     if (args.identifier.controllerKeyId === undefined) {
       throw new Error('Controller Key ID undefined')
@@ -296,7 +284,60 @@ export class EbsiPlugin implements IAgentPlugin {
   }
 
   private async insertDidDocument(args: IInsertDidDocumentArgs): Promise<IRPCResult> {
-    return { jsonrpc: "2.0", id: 0, result: "not implemented" }
+    const didDocument = {
+      '@context': 'https://w3id.org/did/v1',
+      id: args.identifier.did,
+      verificationMethod: [
+        {
+          id: args.identifier.controllerKeyId,
+          type: 'JsonWebKey2020',
+          controller: args.identifier.did,
+          publicKeyJwk: args.publicKeyJwk,
+        },
+      ],
+      authentication: [args.identifier.controllerKeyId],
+      assertionMethod: [args.identifier.controllerKeyId],
+    }
+    console.log(JSON.stringify(didDocument, null, 2))
+    const metadata = {
+      meta: crypto.randomBytes(32).toString('hex'),
+    }
+    const timestamp = {
+      data: crypto.randomBytes(32).toString('hex'),
+    }
+    const bufferDidDocument = Buffer.from(JSON.stringify(didDocument))
+    const bufferTimestamp = Buffer.from(JSON.stringify(timestamp))
+    const bufferMetadata = Buffer.from(JSON.stringify(metadata))
+    const didDocumentHash = sha256(bufferDidDocument)
+
+    const receipt = await fetch('https://api-pilot.ebsi.eu/did-registry/v3/jsonrpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${args.bearer}` },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'insertDidDocument',
+        id: 1,
+        params: [
+          {
+            from: '0xe35bC87Edd691B59bec01fA58c125eE53A3AcA3b',
+            identifier: `0x${Buffer.from(args.identifier.did).toString('hex')}`,
+            hashAlgorithmId: 1, // sha256
+            hashValue: didDocumentHash,
+            didVersionInfo: `0x${bufferDidDocument.toString('hex')}`,
+            timestampData: `0x${bufferTimestamp.toString('hex')}`,
+            didVersionMetadata: `0x${bufferMetadata.toString('hex')}`,
+          },
+        ],
+      }),
+    })
+
+    const receiptJson = await receipt.json()
+    console.log(receiptJson)
+    if (receipt.status > 299 || receipt.status < 200) {
+      throw new Error(`${JSON.stringify(receiptJson, null, 2)}`)
+    }
+
+    return { jsonrpc: '2.0', id: 0, result: 'not implemented' }
   }
 
   /** {@inheritDoc IMyAgentPlugin.myPluginFoo} */
